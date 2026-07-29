@@ -1,8 +1,12 @@
 fastapi
 uvicorn
+pandas
 xgboost
 shap
-pandas
 scikit-learn
-twilio
+yfinance
+requests
+feedparser
+python-dateutil
 python-dotenv
+twilio
