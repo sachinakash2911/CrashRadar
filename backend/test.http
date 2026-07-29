@@ -1,0 +1,29 @@
+### Check API status
+GET http://127.0.0.1:8000/
+
+### Predict RELIANCE
+GET http://127.0.0.1:8000/predict/RELIANCE
+
+### Predict TCS
+GET http://127.0.0.1:8000/predict/TCS
+
+### Predict INFY
+GET http://127.0.0.1:8000/predict/INFY
+
+### Predict HDFCBANK
+GET http://127.0.0.1:8000/predict/HDFCBANK
+
+### Predict a stock that doesn't exist (should return 404)
+GET http://127.0.0.1:8000/predict/UNKNOWN
+
+### Send WhatsApp alert for RELIANCE (will fail until you set real Twilio creds)
+POST http://127.0.0.1:8000/alert/RELIANCE
+Content-Type: application/json
+
+{}
+
+### Send alert for a stock with custom note
+POST http://127.0.0.1:8000/alert/TCS
+Content-Type: application/json
+
+{"note": "Checking TCS risk manually"}
