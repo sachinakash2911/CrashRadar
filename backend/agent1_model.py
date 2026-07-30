@@ -11,6 +11,33 @@ import shap
 import warnings
 warnings.filterwarnings('ignore')
 
+# Patch SHAP XGBTreeModelLoader for XGBoost 3.x base_score format compatibility ([5E-1] string format)
+try:
+    from shap.explainers._tree import XGBTreeModelLoader
+    _orig_xgb_init = XGBTreeModelLoader.__init__
+    def _safe_xgb_init(self, xgb_model):
+        import shap.explainers._tree as tree_mod
+        orig_decode = tree_mod.decode_ubjson_buffer
+        def patched_decode(fd):
+            res = orig_decode(fd)
+            try:
+                bs = res['learner']['learner_model_param']['base_score']
+                if isinstance(bs, str) and bs.startswith('[') and bs.endswith(']'):
+                    res['learner']['learner_model_param']['base_score'] = bs[1:-1]
+            except Exception:
+                pass
+            return res
+        tree_mod.decode_ubjson_buffer = patched_decode
+        try:
+            _orig_xgb_init(self, xgb_model)
+        finally:
+            tree_mod.decode_ubjson_buffer = orig_decode
+
+    XGBTreeModelLoader.__init__ = _safe_xgb_init
+except Exception:
+    pass
+
+
 from live_monitor import get_live_risk
 
 
@@ -79,11 +106,17 @@ def load_model_once():
     if _cache["model"] is not None:
         return _cache["model"], _cache["threshold"], _cache["feature_columns"]
 
-    model_path = os.path.join(BACKEND_DIR, 'crash_model.pkl')
+    model_path_json = os.path.join(BACKEND_DIR, 'crash_model.json')
+    model_path_pkl = os.path.join(BACKEND_DIR, 'crash_model.pkl')
     threshold_path = os.path.join(BACKEND_DIR, 'threshold.txt')
 
-    with open(model_path, 'rb') as f:
-        _cache["model"] = pickle.load(f)
+    if os.path.exists(model_path_json):
+        model = XGBClassifier()
+        model.load_model(model_path_json)
+        _cache["model"] = model
+    elif os.path.exists(model_path_pkl):
+        with open(model_path_pkl, 'rb') as f:
+            _cache["model"] = pickle.load(f)
 
     with open(threshold_path, 'r') as f:
         _cache["threshold"] = float(f.read().strip())
