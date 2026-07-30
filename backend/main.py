@@ -174,9 +174,11 @@ def predict(stock: str):
             "contagion_contribution": round(agent3_score * 0.15, 2),
             "formula": "Agent1(60%) + News(25%) + Contagion(15%)",
         },
-        "live_data": {
-            "current_price": agent1_result.get("price_proximity", {}).get("current_price"),
-            "as_of": agent1_result.get("live_monitor", {}).get("fetched_at"),
+        "agent3": {
+            "contagion_risk": agent3["contagion_risk"],
+            "affected_companies": agent3["affected_companies"],
+           "explanation": agent3["conclusion"],
+            "sector": agent3["sector"],
         },
     }
 
@@ -262,7 +264,7 @@ def alert(stock: str, body: AlertNote = AlertNote()):
         f"Live: {result['live_signal'].get('alert_level', 'LOW')}\n"
         f"Agent2 (News): {result['agent2']['conclusion']}"
         f"{family_note_text}\n"
-        f"Agent3 (Contagion): {result['agent3']['explanation']}"
+        f"Agent3 (Contagion): {result['agent3']['conclusion']}"
         f"{note_text}"
     )
 

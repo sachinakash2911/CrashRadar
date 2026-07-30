@@ -25,14 +25,71 @@ STOCKS = [
 ]
 
 STOCK_FULL_NAMES = {
-    "TCS": "Tata Consultancy Services", "ITC": "ITC Limited", "LT": "Larsen Toubro",
-    "SBIN": "State Bank of India", "RELIANCE": "Reliance Industries", "HDFCBANK": "HDFC Bank",
-    "ICICIBANK": "ICICI Bank", "KOTAKBANK": "Kotak Mahindra Bank", "AXISBANK": "Axis Bank",
-    "BAJFINANCE": "Bajaj Finance", "HINDUNILVR": "Hindustan Unilever", "ADANIENT": "Adani Enterprises",
-    "SUNPHARMA": "Sun Pharma", "HCLTECH": "HCL Technologies", "ULTRACEMCO": "UltraTech Cement",
-    "BHARTIARTL": "Bharti Airtel", "ASIANPAINT": "Asian Paints", "WIPRO": "Wipro",
-    "TITAN": "Titan Company", "INFY": "Infosys", "MARUTI": "Maruti Suzuki",
-    "NTPC": "NTPC Limited", "ONGC": "Oil and Natural Gas Corporation", "POWERGRID": "Power Grid Corporation",
+   "TCS": "Tata Consultancy Services",
+    "ITC": "ITC Limited",
+    "LT": "Larsen Toubro",
+    "SBIN": "State Bank of India",
+    "RELIANCE": "Reliance Industries",
+    "HDFCBANK": "HDFC Bank",
+    "ICICIBANK": "ICICI Bank",
+    "KOTAKBANK": "Kotak Mahindra Bank",
+    "AXISBANK": "Axis Bank",
+    "BAJFINANCE": "Bajaj Finance",
+    "HINDUNILVR": "Hindustan Unilever",
+    "ADANIENT": "Adani Enterprises",
+    "SUNPHARMA": "Sun Pharma",
+    "HCLTECH": "HCL Technologies",
+    "ULTRACEMCO": "UltraTech Cement",
+    "BHARTIARTL": "Bharti Airtel",
+    "ASIANPAINT": "Asian Paints",
+    "WIPRO": "Wipro",
+    "TITAN": "Titan Company",
+    "INFY": "Infosys",
+    "MARUTI": "Maruti Suzuki",
+    "NTPC": "NTPC Limited",
+    "ONGC": "Oil and Natural Gas Corporation",
+    "POWERGRID": "Power Grid Corporation",
+    "JIOFIN": "Jio Financial Services",
+    "NETWORK18": "Network18 Media",
+    "TV18BRDCST": "TV18 Broadcast",
+    "TATASTEEL": "Tata Steel",
+    "TATAPOWER": "Tata Power",
+    "TATACHEM": "Tata Chemicals",
+    "TATACOMM": "Tata Communications",
+    "TATACONSUM": "Tata Consumer Products",
+    "TATAELXSI": "Tata Elxsi",
+    "TRENT": "Trent Limited",
+    "INDHOTEL": "Indian Hotels Company",
+    "TATAMOTORS": "Tata Motors",
+    "ADANIPORTS": "Adani Ports",
+    "ADANIGREEN": "Adani Green Energy",
+    "ADANIPOWER": "Adani Power",
+    "ADANIENSOL": "Adani Energy Solutions",
+    "ATGL": "Adani Total Gas",
+    "ADANIWILMAR": "Adani Wilmar",
+    "AMBUJACEM": "Ambuja Cements",
+    "ACC": "ACC Limited",
+    "HDFCLIFE": "HDFC Life Insurance",
+    "HDFCAMC": "HDFC Asset Management",
+    "HDFCSEC": "HDFC Securities",
+    "ICICIGI": "ICICI Lombard",
+    "ICICIPRULI": "ICICI Prudential Life Insurance",
+    "ICICISEC": "ICICI Securities",
+    "BAJAJFINSV": "Bajaj Finserv",
+    "BAJAJELEC": "Bajaj Electricals",
+    "BAJAJHFL": "Bajaj Housing Finance",
+    "BAJAJ-AUTO": "Bajaj Auto",
+    "KOTAKLIFE": "Kotak Mahindra Life Insurance",
+    "KOTAKMF": "Kotak Mahindra Mutual Fund",
+    "AXISCADES": "Axiscades Technologies",
+    "AXISLIFE": "Axis Max Life Insurance",
+    "M&M": "Mahindra and Mahindra",
+    "M&MFIN": "Mahindra Finance",
+    "MAHINDCIE": "Mahindra CIE Automotive",
+    "TECHM": "Tech Mahindra",
+    "GRASIM": "Grasim Industries",
+    "HINDALCO": "Hindalco Industries",
+    "IDEA": "Vodafone Idea",
 }
 
 COMPANY_EXCLUDE_TERMS = {
@@ -347,7 +404,6 @@ def _build_conclusion(items: list, stock: str, sentiment: str, risk_boost: int, 
 
 def get_news_sentiment(stock: str, use_cache: bool = True) -> dict:
     stock = stock.upper()
-
     if use_cache:
         cached = _cache_get(f"news:{stock}")
         if cached is not None:
@@ -426,7 +482,7 @@ def get_family_news_sentiment(stock: str, max_related: int = 5) -> dict:
     if family_negative_flags:
         names = ", ".join(family_negative_flags)
         family_risk_note = (
-            f"⚠️ Related compan{'ies' if len(family_negative_flags) > 1 else 'y'} "
+            f"⚠ Related compan{'ies' if len(family_negative_flags) > 1 else 'y'} "
             f"{names} showing negative news sentiment — possible contagion risk for {stock}"
         )
 
