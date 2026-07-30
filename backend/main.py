@@ -1,24 +1,18 @@
 import os
-import pickle
-import pandas as pd
+import concurrent.futures
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
 from dotenv import load_dotenv
 
+from agent1_model import get_agent1_result as run_agent1_func
 from agent2_news import get_news_sentiment
 from agent3_graph import get_contagion_risk, get_stock_family
 from live_monitor import get_live_risk, get_replay_risk
 from engine import run_engine
 
 load_dotenv()
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "crash_model.pkl")
-DATA_DIR = os.path.dirname(__file__)
-
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
 
 app = FastAPI(title="CrashRadar API", version="3.0")
 
@@ -29,6 +23,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    from agent1_model import load_model_once, precompute_all_stocks
+    print("Loading model...")
+    load_model_once()
+    print("Precomputing all stocks...")
+    precompute_all_stocks()
+    print("CrashRadar API ready!")
+
 
 twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
 twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
@@ -44,96 +49,62 @@ STOCKS = [
 ]
 
 
-# ---------- Agent 1 helpers ----------
+# ---------- Agent wrappers with fallbacks ----------
 
-def load_stock_csv(stock: str) -> pd.DataFrame:
-    paths_to_try = [
-        os.path.join(DATA_DIR, f"{stock}_data.csv"),
-        os.path.join(DATA_DIR, f"{stock.upper()}_data.csv"),
-        os.path.join(DATA_DIR, f"{stock.lower()}_data.csv"),
-    ]
-    for p in paths_to_try:
-        if os.path.exists(p):
-            df = pd.read_csv(p, index_col=0)
-            df["Stock"] = stock.upper()
-            return df
-    raise FileNotFoundError(f"No CSV found for {stock}")
-
-
-def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.dropna(subset=["Close"]).copy()
-    df["Prev_Change"] = df["Daily_Change_%"].shift(1)
-    df["Prev_Volume"] = df["Volume"].shift(1)
-    df["Prev_Close"] = df["Close"].shift(1)
-    df.dropna(inplace=True)
-    return df
+def run_agent1(stock):
+    try:
+        return run_agent1_func(stock.upper())
+    except Exception as e:
+        return {
+            "risk_score": 0,
+            "is_danger": False,
+            "shap_reasons": ["Agent 1 error"],
+            "plain_english": str(e),
+            "price_proximity": {},
+            "live_monitor": {},
+        }
 
 
-def predict_risk(df: pd.DataFrame):
-    X = df[["Prev_Change", "Prev_Volume", "Prev_Close"]]
-    proba = model.predict_proba(X)[-1][1]
-    risk_score = float(round(proba * 100, 2))
-    is_danger = bool(risk_score > 60)
-    return risk_score, is_danger
+def run_agent2(stock):
+    try:
+        return get_news_sentiment(stock.upper())
+    except Exception as e:
+        return {
+            "sentiment": "neutral",
+            "score": 0,
+            "risk_boost": 0,
+            "risk_reduction": 0,
+            "summary": str(e),
+        }
 
 
-def generate_reasons(df: pd.DataFrame, risk_score: float) -> list:
-    reasons = []
-    if risk_score > 60:
-        last = df.iloc[-1]
-        if last["Prev_Change"] < -2:
-            reasons.append(f"yesterday dropped {last['Prev_Change']:.1f}%")
-        if last["Prev_Change"] < -1:
-            reasons.append("negative price movement")
-        if last["Prev_Volume"] > df["Prev_Volume"].median() * 1.5:
-            reasons.append("higher than normal volume")
-        if not reasons:
-            reasons.append("elevated crash probability from model")
-    else:
-        reasons.append("no major risk signals")
-    return reasons
+def run_agent3(stock, score):
+    try:
+        return get_contagion_risk(stock.upper(), {stock.upper(): score})
+    except Exception as e:
+        return {
+            "contagion_risk": "low",
+            "contagion_score": 0,
+            "explanation": str(e),
+        }
 
 
-def get_agent1_result(stock: str):
-    df = load_stock_csv(stock)
-    df = prepare_features(df)
-    if len(df) < 2:
-        raise HTTPException(status_code=400, detail=f"Not enough data for {stock}")
-    risk_score, is_danger = predict_risk(df)
-    reasons = generate_reasons(df, risk_score)
-    return risk_score, is_danger, reasons
+# ---------- Adapter for engine.py ----------
+
+def get_agent1_result_adapter(stock: str):
+    result = run_agent1_func(stock)
+    return result["risk_score"], result["is_danger"], result["shap_reasons"]
 
 
 def get_all_agent1_scores() -> dict:
     scores = {}
     for s in STOCKS:
         try:
-            risk_score, _, _ = get_agent1_result(s)
-            scores[s] = risk_score
+            result = run_agent1_func(s)
+            scores[s] = result["risk_score"]
         except Exception:
             scores[s] = 0
     return scores
-
-
-# ---------- Combined verdict (used by /predict and /alert — cheap 3-signal version) ----------
-
-def build_final_verdict(stock: str, final_score: float, agent2: dict, agent3: dict) -> str:
-    level = "HIGH" if final_score > 60 else "MODERATE" if final_score > 30 else "LOW"
-    causes = []
-    if agent2["sentiment"] == "negative":
-        causes.append("negative news")
-    if agent3["contagion_risk"] == "high":
-        causes.append("sector/family contagion risk")
-    if not causes:
-        causes.append("model risk signals")
-    return f"{stock.upper()} is at {level} risk due to {' and '.join(causes)}"
-
-
-def compute_final_score(agent1_score, agent2: dict, agent3: dict):
-    final_score = (agent1_score * 0.5) + (agent2["risk_boost"] * 1.0) + (agent3["contagion_score"] * 0.3)
-    final_score = float(round(min(100, final_score), 2))
-    is_danger = bool(final_score > 60)
-    return final_score, is_danger
 
 
 # ---------- Routes ----------
@@ -145,56 +116,75 @@ def root():
 
 @app.get("/predict/{stock}")
 def predict(stock: str):
-    """Cheap 3-signal view: Agent 1 + Agent 2 (own stock only) + Agent 3. No live layer, no family news."""
     stock = stock.upper()
 
-    try:
-        agent1_score, agent1_danger, agent1_reasons = get_agent1_result(stock)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Stock '{stock}' not found")
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_agent1 = executor.submit(run_agent1, stock)
+        future_agent2 = executor.submit(run_agent2, stock)
 
-    agent2 = get_news_sentiment(stock)
+        agent1_result = future_agent1.result(timeout=30)
+        agent2_result = future_agent2.result(timeout=10)
 
-    all_scores = get_all_agent1_scores()
-    agent3 = get_contagion_risk(stock, all_scores)
+    agent1_score = agent1_result.get("risk_score", 0)
+    agent1_danger = agent1_result.get("is_danger", False)
+    agent3_result = run_agent3(stock, agent1_score)
 
-    final_score, is_danger = compute_final_score(agent1_score, agent2, agent3)
-    verdict = build_final_verdict(stock, final_score, agent2, agent3)
+    agent2_boost = agent2_result.get("risk_boost", 0)
+    agent2_reduction = agent2_result.get("risk_reduction", 0)
+    news_impact = agent2_boost - agent2_reduction
+    agent3_score = agent3_result.get("contagion_score", 0)
+
+    final_score = (
+        agent1_score * 0.60 +
+        news_impact * 0.25 +
+        agent3_score * 0.15
+    )
+
+    if agent1_danger and final_score < 40:
+        final_score = 40
+
+    final_score = min(100, max(0, round(final_score, 2)))
+    is_danger = final_score > 55
+
+    if final_score >= 70:
+        risk_level = "HIGH"
+        verdict = f"{stock} is at HIGH risk — {agent1_result.get('plain_english', '')[:100]}"
+    elif final_score >= 55:
+        risk_level = "ELEVATED"
+        verdict = f"{stock} shows ELEVATED risk — monitoring recommended"
+    elif final_score >= 40:
+        risk_level = "MODERATE"
+        verdict = f"{stock} shows MODERATE risk — watch closely"
+    else:
+        risk_level = "LOW"
+        verdict = f"{stock} is at LOW risk — normal market conditions"
 
     return {
         "stock": stock,
         "final_risk_score": final_score,
+        "risk_level": risk_level,
         "is_danger": is_danger,
-        "agent1": {
-            "risk_score": agent1_score,
-            "reasons": agent1_reasons,
-        },
-        "agent2": {
-            "sentiment": agent2["sentiment"],
-            "conclusion": agent2["conclusion"],
-            "articles": agent2["articles"][:3],
-            "sources_used": agent2["sources_used"],
-            "risk_boost": agent2["risk_boost"],
-        },
-        "agent3": {
-            "contagion_risk": agent3["contagion_risk"],
-            "affected_companies": agent3["affected_companies"],
-            "explanation": agent3["explanation"],
-            "sector": agent3["sector"],
-        },
         "final_verdict": verdict,
+        "agent1": agent1_result,
+        "agent2": agent2_result,
+        "agent3": agent3_result,
+        "score_breakdown": {
+            "agent1_contribution": round(agent1_score * 0.60, 2),
+            "news_contribution": round(news_impact * 0.25, 2),
+            "contagion_contribution": round(agent3_score * 0.15, 2),
+            "formula": "Agent1(60%) + News(25%) + Contagion(15%)",
+        },
+        "live_data": {
+            "current_price": agent1_result.get("price_proximity", {}).get("current_price"),
+            "as_of": agent1_result.get("live_monitor", {}).get("fetched_at"),
+        },
     }
 
 
 @app.get("/monitor/{stock}")
 def monitor(stock: str):
-    """
-    Full CrashRadar engine — Agent 1 (historical), Live (intraday),
-    Agent 2 (own + family/related news), and Agent 3 (contagion),
-    combined into one final verdict.
-    """
     try:
-        return run_engine(stock, get_agent1_result, get_all_agent1_scores)
+        return run_engine(stock, get_agent1_result_adapter, get_all_agent1_scores)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Stock '{stock}' not found")
     except ValueError as e:
@@ -203,15 +193,9 @@ def monitor(stock: str):
 
 @app.get("/stock/{stock}/family")
 def stock_family(stock: str):
-    """
-    Exposes Agent 3's family/sector relationship data for a stock —
-    parent company, subsidiaries, sector peers. Used by the dashboard
-    to show contagion context.
-    """
     stock = stock.upper()
     if stock not in STOCKS:
         raise HTTPException(status_code=404, detail=f"Stock '{stock}' not found")
-
     return get_stock_family(stock)
 
 
@@ -225,7 +209,6 @@ def live_risk(stock: str):
 
 @app.get("/live/{stock}/replay")
 def replay_risk(stock: str, at: str):
-    """Example: /live/RELIANCE/replay?at=2026-07-21 10:30"""
     try:
         return get_replay_risk(stock, as_of=at)
     except ValueError as e:
@@ -246,7 +229,7 @@ def alert(stock: str, body: AlertNote = AlertNote()):
     stock = stock.upper()
 
     try:
-        result = run_engine(stock, get_agent1_result, get_all_agent1_scores)
+        result = run_engine(stock, get_agent1_result_adapter, get_all_agent1_scores)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Stock '{stock}' not found")
     except ValueError as e:
@@ -271,7 +254,7 @@ def alert(stock: str, body: AlertNote = AlertNote()):
     family_note_text = f"\n{result['agent2_family_note']}" if result.get("agent2_family_note") else ""
 
     message_body = (
-        f"🚨 CrashRadar Alert\n"
+        f"CrashRadar Alert\n"
         f"Stock: {stock}\n"
         f"Final Risk Score: {final_score}%\n"
         f"{result['final_verdict']}\n"
@@ -303,16 +286,12 @@ def alert(stock: str, body: AlertNote = AlertNote()):
 
 @app.get("/watchlist")
 def watchlist():
-    """
-    Runs the full engine across all tracked stocks, sorted by risk
-    descending. Used by the dashboard's main list view.
-    """
     results = []
     failed = []
 
     for stock in STOCKS:
         try:
-            result = run_engine(stock, get_agent1_result, get_all_agent1_scores)
+            result = run_engine(stock, get_agent1_result_adapter, get_all_agent1_scores)
             results.append(result)
         except Exception as e:
             print(f"[watchlist] Skipping {stock}: {e}")
