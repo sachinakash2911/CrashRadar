@@ -174,12 +174,6 @@ def predict(stock: str):
             "contagion_contribution": round(agent3_score * 0.15, 2),
             "formula": "Agent1(60%) + News(25%) + Contagion(15%)",
         },
-        "agent3": {
-            "contagion_risk": agent3["contagion_risk"],
-            "affected_companies": agent3["affected_companies"],
-           "explanation": agent3["conclusion"],
-            "sector": agent3["sector"],
-        },
     }
 
 
