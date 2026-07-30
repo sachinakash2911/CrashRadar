@@ -1,72 +1,71 @@
 /**
- * PORTFOLIO SERVICE (Mocked / Future Backend Integration)
+ * PORTFOLIO SERVICE — Live Backend Integration
  *
- * BACKEND TEAMMATE CONTRACT SPECIFICATION:
- * ----------------------------------------------------
- * When implementing a real backend service for user portfolio risk calculation:
- *
- * 1. GET /api/v1/portfolio
- *    - Method: GET
- *    - Headers: Authorization: Bearer <token>
- *    - Response: JSON array of user's saved holdings
- *      [ { symbol: "RELIANCE", qty: 50, avgPrice: 2850 }, { symbol: "TCS", qty: 20, avgPrice: 3800 } ]
- *
- * 2. POST /api/v1/portfolio/analyze
- *    - Method: POST
- *    - Request Body: JSON { holdings: [ "RELIANCE", "ADANIENT", "TCS" ] }
- *    - Response: JSON
- *      {
- *        totalHoldings: 3,
- *        summary: { safeCount: 1, cautionCount: 0, dangerCount: 2 },
- *        overallRiskScore: 68,
- *        holdings: [
- *          { symbol: "RELIANCE", risk_score: 72, is_danger: true, status: "danger" },
- *          { symbol: "ADANIENT", risk_score: 84, is_danger: true, status: "danger" },
- *          { symbol: "TCS", risk_score: 28, is_danger: false, status: "safe" }
- *        ]
- *      }
+ * Calls /predict/{stock} for each holding to get real risk scores.
+ * Falls back gracefully if the backend is unavailable for a particular stock.
  */
 
-import { WATCHLIST_STOCKS } from './api';
+import { predictStockCrash, WATCHLIST_STOCKS } from './api';
 
-// Initial default portfolio symbols for demonstration
 const DEFAULT_PORTFOLIO_SYMBOLS = ['RELIANCE', 'ADANIENT', 'TCS'];
 
 /**
- * Fetch portfolio holdings risk analysis (Simulated client-side calculations)
+ * Fetch portfolio holdings risk analysis.
+ * Makes real parallel /predict/ calls for each symbol.
+ * @param {string[]} symbols - Array of stock ticker strings
  */
 export async function fetchPortfolioAnalysis(symbols = DEFAULT_PORTFOLIO_SYMBOLS) {
-  // Map provided symbols against known watchlist metadata and risk scores
-  const holdings = symbols.map(sym => {
-    const meta = WATCHLIST_STOCKS.find(s => s.symbol === sym) || {
-      symbol: sym,
-      name: `${sym} Ltd.`,
-      sector: 'NSE Equity',
-      price: '₹1,500',
-      change: '0.0%',
-      risk: 50,
-      status: 'caution',
-    };
+  // Fetch all in parallel, with individual error handling
+  const results = await Promise.all(
+    symbols.map(async (sym) => {
+      const meta = WATCHLIST_STOCKS.find(s => s.symbol === sym) || {
+        symbol: sym,
+        name: `${sym} Ltd.`,
+        sector: 'NSE Equity',
+      };
 
-    return {
-      symbol: meta.symbol,
-      name: meta.name,
-      sector: meta.sector,
-      price: meta.price,
-      change: meta.change,
-      risk_score: meta.risk,
-      is_danger: meta.status === 'danger',
-      status: meta.status,
-    };
-  });
+      try {
+        const data = await predictStockCrash(sym);
+        const riskScore = data.final_risk_score ?? 0;
+        const level = data.risk_level?.toUpperCase() ?? 'LOW';
+        const status =
+          level === 'HIGH' || level === 'ELEVATED' ? 'danger' :
+          level === 'MODERATE' ? 'caution' : 'safe';
 
-  const safeCount = holdings.filter(h => h.status === 'safe').length;
-  const cautionCount = holdings.filter(h => h.status === 'caution').length;
-  const dangerCount = holdings.filter(h => h.status === 'danger').length;
+        return {
+          symbol: sym,
+          name: meta.name,
+          sector: meta.sector,
+          risk_score: riskScore,
+          is_danger: data.is_danger ?? false,
+          status,
+          final_verdict: data.final_verdict ?? '',
+          error: null,
+        };
+      } catch {
+        // Graceful degradation — show the stock card with unknown status
+        return {
+          symbol: sym,
+          name: meta.name,
+          sector: meta.sector,
+          risk_score: null,
+          is_danger: false,
+          status: 'unknown',
+          final_verdict: 'Unable to fetch risk data — backend may be unavailable.',
+          error: true,
+        };
+      }
+    })
+  );
 
-  const total = holdings.length;
-  const overallRiskScore = total > 0
-    ? Math.round(holdings.reduce((sum, h) => sum + h.risk_score, 0) / total)
+  const valid = results.filter(h => h.risk_score !== null);
+  const safeCount    = results.filter(h => h.status === 'safe').length;
+  const cautionCount = results.filter(h => h.status === 'caution').length;
+  const dangerCount  = results.filter(h => h.status === 'danger').length;
+
+  const total = results.length;
+  const overallRiskScore = valid.length > 0
+    ? Math.round(valid.reduce((sum, h) => sum + h.risk_score, 0) / valid.length)
     : 0;
 
   return {
@@ -78,7 +77,7 @@ export async function fetchPortfolioAnalysis(symbols = DEFAULT_PORTFOLIO_SYMBOLS
       elevatedCount: cautionCount + dangerCount,
     },
     overallRiskScore,
-    holdings,
-    isSimulated: true, // Tag for UI
+    holdings: results,
+    isSimulated: false, // Now using real backend data
   };
 }

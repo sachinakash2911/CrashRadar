@@ -64,12 +64,21 @@ export default function StockDetailPage({ symbol, onBack }) {
   const [loadingPred, setLoadingPred] = useState(true);
 
   const meta = WATCHLIST_STOCKS.find(s => s.symbol === symbol) || {
-    symbol, name: symbol, sector: 'Equity', price: '—', change: '—',
-    risk: 0, status: 'safe', marketCap: '—', pe: '—', volume: '—',
-    high52: '—', low52: '—',
+    symbol, name: symbol, sector: 'Equity',
+    marketCap: '—', pe: '—', volume: '—', high52: '—', low52: '—',
   };
 
-  const rc = RISK_CONFIG[meta.status] || RISK_CONFIG.safe;
+  // Derive risk status from live prediction data when available; default to 'safe'
+  const getLiveStatus = () => {
+    if (!prediction) return 'safe';
+    const level = prediction.risk_level?.toUpperCase();
+    if (level === 'HIGH' || level === 'ELEVATED') return 'danger';
+    if (level === 'MODERATE') return 'caution';
+    return 'safe';
+  };
+
+  const liveStatus = getLiveStatus();
+  const rc = RISK_CONFIG[liveStatus] || RISK_CONFIG.safe;
 
   useEffect(() => {
     setLoadingChart(true);
@@ -146,18 +155,20 @@ export default function StockDetailPage({ symbol, onBack }) {
 
           {/* Price + Change */}
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: '2rem', color: '#0a0f1e', letterSpacing: '-0.04em' }}>
-              {meta.price}
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: '1.3rem', color: '#0a0f1e', letterSpacing: '-0.04em' }}>
+              {prediction?.agent1?.plain_english
+                ? (() => {
+                    const match = prediction.agent1.plain_english.match(/last session[^)]*change was ([^\s]+)/);
+                    return match ? match[1] : '—';
+                  })()
+                : '—'}
             </div>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
               fontWeight: 700, fontSize: '0.85rem',
-              color: meta.change.startsWith('+') ? '#16a34a' : '#e11d48',
+              color: '#64748b',
             }}>
-              {meta.change.startsWith('+')
-                ? <TrendingUp size={15} strokeWidth={2.5} />
-                : <TrendingDown size={15} strokeWidth={2.5} />}
-              {meta.change} {t('todayChange')}
+              {t('todayChange')}
             </div>
           </div>
         </div>
@@ -258,12 +269,12 @@ export default function StockDetailPage({ symbol, onBack }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.1rem' }}>
                   <span style={{ fontSize: '0.78rem', color: '#6b7a99', fontWeight: 500 }}>{t('aiRiskScore')}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.95rem', fontWeight: 900, color: rc.color }}>
-                    {loadingPred ? '—' : prediction?.risk_score ?? meta.risk}/100
+                    {loadingPred ? '—' : (prediction?.final_risk_score ?? '—')}/100
                   </span>
                 </div>
                 <div style={{ background: '#f1f5f9', borderRadius: 4, height: 5, overflow: 'hidden' }}>
                   <div style={{
-                    width: `${loadingPred ? meta.risk : (prediction?.risk_score ?? meta.risk)}%`,
+                    width: `${loadingPred ? 0 : (prediction?.final_risk_score ?? 0)}%`,
                     height: '100%', background: rc.color, borderRadius: 4,
                     transition: 'width 1s ease',
                   }} />
@@ -271,8 +282,8 @@ export default function StockDetailPage({ symbol, onBack }) {
               </div>
             </div>
 
-            {/* AI Risk Alert — info only for danger stocks */}
-            {meta.status === 'danger' && (
+            {/* AI Risk Alert — only for danger level stocks */}
+            {liveStatus === 'danger' && (
               <div style={{
                 background: '#fff1f2', border: '1px solid #fecdd3',
                 borderRadius: 14, padding: '1rem 1.25rem',
@@ -295,13 +306,14 @@ export default function StockDetailPage({ symbol, onBack }) {
         {/* ── 3-Agent Intelligence Outputs Panel ───────────────── */}
         <AgentAnalysisPanel
           symbol={symbol}
-          riskScore={prediction?.risk_score ?? meta.risk}
-          isDanger={prediction?.is_danger ?? (meta.status === 'danger')}
-          reasons={prediction?.reasons ?? []}
+          predictData={prediction}
+          riskScore={prediction?.final_risk_score ?? 0}
+          isDanger={prediction?.is_danger ?? false}
+          reasons={prediction?.agent1?.shap_reasons ?? []}
         />
 
         {/* ── AI Reasons (if available) ─────────────────── */}
-        {prediction?.reasons?.length > 0 && (
+        {((prediction?.agent1?.shap_reasons ?? prediction?.reasons ?? []).length > 0) && (
           <div style={{
             marginTop: '1.5rem', background: 'white', border: '1px solid var(--border)',
             borderRadius: 20, padding: '1.75rem', boxShadow: 'var(--shadow-card)',
@@ -310,7 +322,7 @@ export default function StockDetailPage({ symbol, onBack }) {
               {t('aiRiskFactors')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {prediction.reasons.map((r, i) => (
+              {(prediction.agent1?.shap_reasons ?? prediction.reasons ?? []).map((r, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
                   background: '#fafbfd', border: '1px solid var(--border)',

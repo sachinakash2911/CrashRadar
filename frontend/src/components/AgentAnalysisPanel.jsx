@@ -1,191 +1,170 @@
 import React, { useState } from 'react';
-import { Activity, Search, Network, Bot, ShieldAlert, CheckCircle2, ChevronRight, Sparkles, FileText, Share2 } from 'lucide-react';
+import { Activity, Search, Network, Bot, ShieldAlert, CheckCircle2, Sparkles } from 'lucide-react';
 
 /**
- * Generate stock-specific mock outputs for the 3 AI Agents based on PPT architecture:
- * Agent 1: Quantitative Analyst (Price & Volume Heartbeat)
- * Agent 2: Intelligence Researcher (News, SEBI Filings, Social)
- * Agent 3: Graph Master (Knowledge Graph & Family Contagion)
- * Result: The Human-AI Bridge Case Report
+ * AgentAnalysisPanel
+ *
+ * Reads LIVE backend data from the full /predict/{stock} response.
+ * Props:
+ *   symbol       - stock ticker string
+ *   predictData  - full object returned by predictStockCrash() / api.js
+ *                  Must contain agent1, agent2, agent3 sub-objects.
+ *
+ * Legacy fallback props (when predictData is not available yet):
+ *   riskScore, isDanger, reasons
  */
-export function getAgentOutputs(symbol, riskScore, isDanger, reasons = []) {
-  const sym = (symbol || 'RELIANCE').toUpperCase();
+export default function AgentAnalysisPanel({ symbol, predictData, riskScore = 0, isDanger = false, reasons = [] }) {
+  const [activeTab, setActiveTab] = useState('all');
 
-  // Stock-tailored agent output data
-  const stockConfigs = {
-    ADANIENT: {
-      agent1: {
-        status: 'HIGH ANOMALY',
-        statusColor: '#e11d48',
-        metrics: [
-          { label: 'Volume Spike', value: '4.2x (30D Avg)', alert: true },
-          { label: 'Order-Book Depth Imbalance', value: '78% Sell Pressure', alert: true },
-          { label: 'Intraday Volatility Index', value: '38.4 (Elevated)', alert: true },
-        ],
-        finding: 'Abnormal sell-side order flow detected in first 15 minutes of session. Microstructure indicates rapid institutional unwinding.',
-      },
-      agent2: {
-        status: 'CRITICAL DISCLOSURE',
-        statusColor: '#e11d48',
-        metrics: [
-          { label: 'SEBI Filing Scan', value: 'Promoter Pledge Increase', alert: true },
-          { label: 'News Sentiment Score', value: '-0.74 (Very Bearish)', alert: true },
-          { label: 'Social Media Noise', value: 'Unverified Debt Rumor Spike', alert: true },
-        ],
-        finding: 'Scoured SEBI regulatory disclosures: 68% promoter stake pledged across offshore entities. Negative news sentiment spike detected.',
-      },
-      agent3: {
-        status: 'CONTAGION RISK HIGH',
-        statusColor: '#e11d48',
-        metrics: [
-          { label: 'Group Entities Linked', value: '7 Listed Companies', alert: true },
-          { label: 'Parent-Subsidiary Exposure', value: 'High Cross-Holding', alert: true },
-          { label: 'Credit Line Cascade Risk', value: '62% Probability', alert: true },
-        ],
-        finding: 'Knowledge Graph mapped 7 linked entities. Parent entity stress threatens lower circuit propagation to ADANIPORTS and ADANIPOWER.',
-      },
-    },
-    RELIANCE: {
-      agent1: {
-        status: 'MODERATE ANOMALY',
-        statusColor: '#e11d48',
-        metrics: [
-          { label: 'Volume Spike', value: '2.8x (30D Avg)', alert: true },
-          { label: 'Order-Book Depth Imbalance', value: '62% Sell Pressure', alert: true },
-          { label: 'Intraday Volatility Index', value: '24.1 (Above Normal)', alert: false },
-        ],
-        finding: 'Large block sell trades executed near support level ₹2,920. Bid liquidity thinning in key F&O contracts.',
-      },
-      agent2: {
-        status: 'NEWS SENTIMENT CAUTION',
-        statusColor: '#d97706',
-        metrics: [
-          { label: 'SEBI Filing Scan', value: 'Clear / Compliant', alert: false },
-          { label: 'News Sentiment Score', value: '-0.38 (Bearish)', alert: true },
-          { label: 'Social Media Noise', value: 'Retail Panic Trending', alert: true },
-        ],
-        finding: 'Telecom tariff adjustment chatter and retail expansion capex concerns raising short-term trader anxiety in social feeds.',
-      },
-      agent3: {
-        status: 'FAMILY NETWORK STABLE',
-        statusColor: '#15803d',
-        metrics: [
-          { label: 'Group Entities Linked', value: '3 Retail & Telecom Units', alert: false },
-          { label: 'Parent-Subsidiary Exposure', value: 'Low Debt Linkage', alert: false },
-          { label: 'Credit Line Cascade Risk', value: '12% Low', alert: false },
-        ],
-        finding: 'Knowledge Graph shows strong balance sheet isolation. Subsidiary capital structure remains shielded from parent volatility.',
-      },
-    },
-    HDFCBANK: {
-      agent1: {
-        status: 'ELEVATED SLIPPAGE',
-        statusColor: '#d97706',
-        metrics: [
-          { label: 'Volume Spike', value: '1.9x (30D Avg)', alert: false },
-          { label: 'Order-Book Depth Imbalance', value: '56% Sell Pressure', alert: true },
-          { label: 'Intraday Volatility Index', value: '18.9 (Normal)', alert: false },
-        ],
-        finding: 'Institutional FII sell-off detected following ADR price discount. Bid depth showing mild compression.',
-      },
-      agent2: {
-        status: 'MARGIN COMPRESSION SCAN',
-        statusColor: '#d97706',
-        metrics: [
-          { label: 'SEBI Filing Scan', value: 'Quarterly NIM Disclosure', alert: false },
-          { label: 'News Sentiment Score', value: '-0.21 (Mild Caution)', alert: false },
-          { label: 'Social Media Noise', value: 'Low Activity', alert: false },
-        ],
-        finding: 'Net Interest Margin (NIM) pressure highlighted in recent analyst notes following merger integration cycle.',
-      },
-      agent3: {
-        status: 'FINANCIAL NETWORK WATCH',
-        statusColor: '#d97706',
-        metrics: [
-          { label: 'Group Entities Linked', value: 'HDFC Life, HDFC AMC', alert: false },
-          { label: 'Parent-Subsidiary Exposure', value: 'Shared Brand Risk', alert: false },
-          { label: 'Credit Line Cascade Risk', value: '22% Moderate', alert: false },
-        ],
-        finding: 'Systemic banking network graph remains robust, but short-term contagion from NBFC sector stress is being monitored.',
-      },
-    },
-    TCS: {
-      agent1: {
-        status: 'HEARTBEAT NORMAL',
-        statusColor: '#15803d',
-        metrics: [
-          { label: 'Volume Spike', value: '1.05x (30D Avg)', alert: false },
-          { label: 'Order-Book Depth Imbalance', value: '48% Neutral', alert: false },
-          { label: 'Intraday Volatility Index', value: '12.4 (Low)', alert: false },
-        ],
-        finding: 'Trading pattern strictly aligned with benchmark index. No abnormal order book imbalance detected.',
-      },
-      agent2: {
-        status: 'POSITIVE DISCLOSURES',
-        statusColor: '#15803d',
-        metrics: [
-          { label: 'SEBI Filing Scan', value: 'Large Deal Win Disclosed', alert: false },
-          { label: 'News Sentiment Score', value: '+0.45 (Bullish)', alert: false },
-          { label: 'Social Media Noise', value: 'Neutral Sentiment', alert: false },
-        ],
-        finding: 'Recent multi-year IT deal announcements confirmed in exchange filings. High management commentary credibility.',
-      },
-      agent3: {
-        status: 'NETWORK SHIELDED',
-        statusColor: '#15803d',
-        metrics: [
-          { label: 'Group Entities Linked', value: 'Tata Group (AAA Rated)', alert: false },
-          { label: 'Parent-Subsidiary Exposure', value: 'Zero Pledge Exposure', alert: false },
-          { label: 'Credit Line Cascade Risk', value: '4% Minimal', alert: false },
-        ],
-        finding: 'Tata Group Knowledge Graph confirms zero promoter share pledges and stellar balance sheet independence.',
-      },
-    },
-  };
+  // Pull live data from the full backend response when available
+  const agent1 = predictData?.agent1 ?? {};
+  const agent2 = predictData?.agent2 ?? {};
+  const agent3 = predictData?.agent3 ?? {};
+  const breakdown = predictData?.score_breakdown ?? {};
 
-  // Default fallback if stock is custom
-  const defaultConfig = {
-    agent1: {
-      status: isDanger ? 'ANOMALY DETECTED' : 'HEARTBEAT NORMAL',
-      statusColor: isDanger ? '#e11d48' : '#15803d',
-      metrics: [
-        { label: 'Volume Spike', value: isDanger ? '3.1x (High)' : '1.1x (Normal)', alert: isDanger },
-        { label: 'Order-Book Imbalance', value: `${riskScore}% Sell Pressure`, alert: isDanger },
-        { label: 'Volatility Metric', value: isDanger ? '29.2 (High)' : '14.1 (Low)', alert: isDanger },
-      ],
-      finding: isDanger
-        ? `Abnormal volume and sell-side depth imbalance detected for ${sym}.`
-        : `Trading metrics for ${sym} are within standard parameters.`,
-    },
-    agent2: {
-      status: isDanger ? 'SEARCH WARNING' : 'DISCLOSURES CLEAN',
-      statusColor: isDanger ? '#e11d48' : '#15803d',
-      metrics: [
-        { label: 'SEBI Filing Scan', value: isDanger ? 'Pledge/Audit Flag' : 'No Flags', alert: isDanger },
-        { label: 'News Sentiment Score', value: isDanger ? '-0.52 (Bearish)' : '+0.25 (Positive)', alert: isDanger },
-        { label: 'Social Sentiment', value: isDanger ? 'Panic Chatter' : 'Stable', alert: isDanger },
-      ],
-      finding: isDanger
-        ? `Unusual regulatory disclosure or sentiment deterioration flagged for ${sym}.`
-        : `No negative regulatory filings or sentiment anomalies discovered for ${sym}.`,
-    },
-    agent3: {
-      status: isDanger ? 'CONTAGION ALERT' : 'GRAPH CLEAR',
-      statusColor: isDanger ? '#e11d48' : '#15803d',
-      metrics: [
-        { label: 'Knowledge Graph Links', value: isDanger ? '4 Affiliated Entities' : 'Independent Structure', alert: isDanger },
-        { label: 'Pledge Contagion', value: isDanger ? 'High Exposure' : 'Zero Pledge Risk', alert: isDanger },
-        { label: 'Cascade Risk', value: isDanger ? '54% High' : '8% Low', alert: isDanger },
-      ],
-      finding: isDanger
-        ? `Knowledge Graph indicates parent/subsidiary debt linkage risk.`
-        : `Knowledge Graph confirms isolated corporate structure with low contagion risk.`,
-    },
-  };
+  const liveRiskScore  = predictData?.final_risk_score ?? riskScore;
+  const liveIsDanger   = predictData?.is_danger ?? isDanger;
+  const liveFinalVerdict = predictData?.final_verdict ?? '';
 
-  const cfg = stockConfigs[sym] || defaultConfig;
+  const hasLiveData = Boolean(predictData?.agent1?.risk_score !== undefined);
 
-  // The 3 Agents array matching PPT slide 3
+  // ─── Agent 1 data ────────────────────────────────────────────────
+  const agent1Score = agent1.risk_score ?? 0;
+  const agent1Danger = agent1.is_danger ?? false;
+  const agent1Reasons = Array.isArray(agent1.shap_reasons) ? agent1.shap_reasons : [];
+  const agent1PlainEnglish = agent1.plain_english ?? '';
+  const liveMarket = agent1.live_market ?? {};
+
+  const agent1Status = agent1Danger
+    ? (agent1Score >= 70 ? 'HIGH ANOMALY' : 'MODERATE ANOMALY')
+    : 'HEARTBEAT NORMAL';
+  const agent1StatusColor = agent1Danger ? '#e11d48' : '#15803d';
+
+  const agent1Metrics = hasLiveData ? [
+    {
+      label: 'Agent 1 Risk Score',
+      value: `${agent1Score}/100`,
+      alert: agent1Danger,
+    },
+    {
+      label: 'Live Intraday',
+      value: liveMarket.price_change_pct != null
+        ? `${liveMarket.price_change_pct > 0 ? '+' : ''}${liveMarket.price_change_pct}%`
+        : (agent1PlainEnglish.match(/live intraday: price ([^\s,]+)/i)?.[1] ?? '—'),
+      alert: liveMarket.price_change_pct != null && liveMarket.price_change_pct < -1,
+    },
+    {
+      label: 'Contribution to Score',
+      value: breakdown.agent1_contribution != null ? `+${breakdown.agent1_contribution}` : '—',
+      alert: false,
+    },
+  ] : [
+    { label: 'Risk Score', value: `${agent1Score}/100`, alert: agent1Danger },
+    { label: 'Model Signal', value: agent1Danger ? 'ELEVATED' : 'NORMAL', alert: agent1Danger },
+    { label: 'Status', value: agent1Status, alert: agent1Danger },
+  ];
+
+  const agent1Finding = agent1Reasons.length > 0
+    ? agent1Reasons[0]
+    : (agent1PlainEnglish || `Agent 1 historical model processed ${symbol}.`);
+
+  // ─── Agent 2 data ────────────────────────────────────────────────
+  const agent2Sentiment = agent2.sentiment ?? 'neutral';
+  const agent2Score = agent2.score ?? 0;
+  const agent2Conclusion = agent2.conclusion ?? '';
+  const agent2Articles = Array.isArray(agent2.articles) ? agent2.articles : [];
+  const agent2Boost = agent2.risk_boost ?? 0;
+  const latestArticle = agent2Articles[0];
+
+  const agent2SentimentUpper = agent2Sentiment.toUpperCase();
+  const agent2StatusColor =
+    agent2Sentiment === 'negative' ? '#e11d48' :
+    agent2Sentiment === 'neutral'  ? '#d97706' : '#15803d';
+  const agent2Status = hasLiveData
+    ? `${agent2SentimentUpper} SENTIMENT (${agent2Score}/100)`
+    : 'NEWS SENTIMENT';
+
+  const agent2Metrics = hasLiveData ? [
+    {
+      label: 'Sentiment',
+      value: agent2SentimentUpper,
+      alert: agent2Sentiment === 'negative',
+    },
+    {
+      label: 'Confidence Score',
+      value: `${agent2Score}/100`,
+      alert: agent2Score < 40,
+    },
+    {
+      label: 'Risk Boost Applied',
+      value: `+${agent2Boost}/30`,
+      alert: agent2Boost > 10,
+    },
+  ] : [
+    { label: 'Sentiment', value: '—', alert: false },
+    { label: 'Score', value: '—', alert: false },
+    { label: 'Risk Boost', value: '—', alert: false },
+  ];
+
+  const agent2Finding = agent2Conclusion
+    || (latestArticle ? `Latest: "${latestArticle.title}" (${latestArticle.source})` : `No news data for ${symbol}.`);
+
+  // ─── Agent 3 data ────────────────────────────────────────────────
+  const agent3ContagionRisk  = agent3.contagion_risk ?? 'UNKNOWN';
+  const agent3ContagionScore = agent3.contagion_score ?? 0;
+  const agent3Conclusion     = agent3.conclusion ?? '';
+  const agent3Affected       = Array.isArray(agent3.affected_companies) ? agent3.affected_companies : [];
+  const agent3Sector         = Array.isArray(agent3.sector) ? agent3.sector.join(', ') : (agent3.sector ?? '—');
+
+  const agent3StatusColor =
+    agent3ContagionRisk === 'CRITICAL' ? '#e11d48' :
+    agent3ContagionRisk === 'HIGH'     ? '#e11d48' :
+    agent3ContagionRisk === 'MODERATE' ? '#d97706' : '#15803d';
+  const agent3Status = hasLiveData
+    ? `CONTAGION: ${agent3ContagionRisk} (${agent3ContagionScore}/100)`
+    : 'CONTAGION RISK';
+
+  const worstAffected = agent3Affected.length > 0
+    ? [...agent3Affected].sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0))[0]
+    : null;
+
+  const agent3Metrics = hasLiveData ? [
+    {
+      label: 'Contagion Score',
+      value: `${agent3ContagionScore}/100`,
+      alert: agent3ContagionScore >= 50,
+    },
+    {
+      label: 'Sector',
+      value: agent3Sector || '—',
+      alert: false,
+    },
+    {
+      label: 'Related Companies',
+      value: agent3Affected.length > 0 ? `${agent3Affected.length} linked` : 'None',
+      alert: agent3Affected.length > 3,
+    },
+  ] : [
+    { label: 'Contagion Risk', value: '—', alert: false },
+    { label: 'Sector', value: '—', alert: false },
+    { label: 'Related Entities', value: '—', alert: false },
+  ];
+
+  const agent3Finding = agent3Conclusion
+    || (worstAffected
+      ? `Highest risk linked entity: ${worstAffected.ticker} (${worstAffected.relation}, ${worstAffected.risk_score}/100).`
+      : `No contagion data for ${symbol}.`);
+
+  // ─── Case report (Human-AI Bridge) ───────────────────────────────
+  const caseReport = liveFinalVerdict
+    || (liveIsDanger
+      ? `CASE REPORT: High crash risk flagged for ${symbol} (Risk Score: ${liveRiskScore}/100). ` +
+        `Agent 1 detected elevated model signals. Agent 2 sentiment: ${agent2SentimentUpper}. ` +
+        `Agent 3 contagion: ${agent3ContagionRisk}.`
+      : `CASE REPORT: ${symbol} cleared all three agent scans (Risk Score: ${liveRiskScore}/100). ` +
+        `Microstructure heartbeat, news sentiment, and contagion graph all within safe parameters.`);
+
+  // ─── Agents config ───────────────────────────────────────────────
   const agents = [
     {
       id: 'agent1',
@@ -196,8 +175,8 @@ export function getAgentOutputs(symbol, riskScore, isDanger, reasons = []) {
       themeColor: '#003087',
       themeBg: '#e8f0fc',
       themeBorder: '#c0d5f5',
-      role: 'Watches the "Heartbeat" of the stock. Detects abnormal volume and price patterns in milliseconds.',
-      data: cfg.agent1,
+      role: 'Watches the "Heartbeat" of the stock. Detects abnormal volume and price patterns using XGBoost ML model trained on historical crash data.',
+      data: { status: agent1Status, statusColor: agent1StatusColor, metrics: agent1Metrics, finding: agent1Finding },
     },
     {
       id: 'agent2',
@@ -208,8 +187,8 @@ export function getAgentOutputs(symbol, riskScore, isDanger, reasons = []) {
       themeColor: '#15803d',
       themeBg: '#f0fdf4',
       themeBorder: '#bbf7d0',
-      role: 'Scours News, SEBI filings, and Social Media to find the "Why" behind the numbers.',
-      data: cfg.agent2,
+      role: 'Scours live news and analyses sentiment to find the "Why" behind the numbers. Adjusts risk score based on article confidence.',
+      data: { status: agent2Status, statusColor: agent2StatusColor, metrics: agent2Metrics, finding: agent2Finding },
     },
     {
       id: 'agent3',
@@ -220,22 +199,10 @@ export function getAgentOutputs(symbol, riskScore, isDanger, reasons = []) {
       themeColor: '#be123c',
       themeBg: '#fff1f2',
       themeBorder: '#fecdd3',
-      role: 'Navigates the Knowledge Graph to see if "family members" (parent/sister entities) are in trouble.',
-      data: cfg.agent3,
+      role: 'Navigates the corporate Knowledge Graph to detect if parent/subsidiary entities carry contagion risk that could cascade.',
+      data: { status: agent3Status, statusColor: agent3StatusColor, metrics: agent3Metrics, finding: agent3Finding },
     },
   ];
-
-  // The Human-AI Bridge Synthesis Case Report
-  const caseReport = isDanger
-    ? `CASE REPORT: High crash risk flagged for ${sym} (Risk Score: ${riskScore}/100). Quantitative Analyst detected a ${cfg.agent1.metrics[0].value} volume spike with order-book imbalance. Intelligence Researcher confirmed negative news/filing sentiment. Graph Master mapped contagion links to affiliated entities. Recommendation: Exercise caution before lower circuits lock liquidity.`
-    : `CASE REPORT: ${sym} cleared all three agent scans (Risk Score: ${riskScore}/100). Microstructure heartbeat, regulatory news filings, and corporate knowledge graph remain in safe operational zones.`;
-
-  return { agents, caseReport };
-}
-
-export default function AgentAnalysisPanel({ symbol, riskScore = 0, isDanger = false, reasons = [] }) {
-  const [activeTab, setActiveTab] = useState('all');
-  const { agents, caseReport } = getAgentOutputs(symbol, riskScore, isDanger, reasons);
 
   return (
     <div style={{
@@ -264,11 +231,13 @@ export default function AgentAnalysisPanel({ symbol, riskScore = 0, isDanger = f
                 Multi-Agent Intelligence Telemetry
               </h3>
               <span className="badge badge-blue" style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem' }}>
-                3-AGENT CONSENSUS
+                {hasLiveData ? 'LIVE DATA' : '3-AGENT CONSENSUS'}
               </span>
             </div>
             <p style={{ fontSize: '0.78rem', color: '#6b7a99', marginTop: '0.15rem' }}>
-              Detailed outputs from the 3 specialized AI agents inspecting {symbol}
+              {hasLiveData
+                ? `Live outputs from 3 AI agents — real backend data for ${symbol}`
+                : `Detailed outputs from the 3 specialized AI agents inspecting ${symbol}`}
             </p>
           </div>
         </div>
@@ -410,19 +379,19 @@ export default function AgentAnalysisPanel({ symbol, riskScore = 0, isDanger = f
           })}
       </div>
 
-      {/* ── The Human-AI Bridge (The Result Case Report) ───── */}
+      {/* ── The Human-AI Bridge (Synthesized Case Report) ───── */}
       <div style={{
-        background: isDanger ? 'linear-gradient(135deg, #fff1f2 0%, #fff7ed 100%)' : 'linear-gradient(135deg, #f0fdf4 0%, #e8f0fc 100%)',
-        border: `1.5px solid ${isDanger ? '#fecdd3' : '#bbf7d0'}`,
+        background: liveIsDanger ? 'linear-gradient(135deg, #fff1f2 0%, #fff7ed 100%)' : 'linear-gradient(135deg, #f0fdf4 0%, #e8f0fc 100%)',
+        border: `1.5px solid ${liveIsDanger ? '#fecdd3' : '#bbf7d0'}`,
         borderRadius: 16, padding: '1.25rem 1.5rem',
         display: 'flex', alignItems: 'flex-start', gap: '1rem',
       }}>
         <div style={{
           width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-          background: isDanger ? '#ffe4e6' : '#dcfce7',
-          border: `1px solid ${isDanger ? '#fecdd3' : '#bbf7d0'}`,
+          background: liveIsDanger ? '#ffe4e6' : '#dcfce7',
+          border: `1px solid ${liveIsDanger ? '#fecdd3' : '#bbf7d0'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: isDanger ? '#be123c' : '#15803d', marginTop: '0.1rem',
+          color: liveIsDanger ? '#be123c' : '#15803d', marginTop: '0.1rem',
         }}>
           <Sparkles size={20} />
         </div>
@@ -431,7 +400,7 @@ export default function AgentAnalysisPanel({ symbol, riskScore = 0, isDanger = f
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem' }}>
             <span style={{
               fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 900,
-              color: isDanger ? '#be123c' : '#15803d', textTransform: 'uppercase', letterSpacing: '0.08em',
+              color: liveIsDanger ? '#be123c' : '#15803d', textTransform: 'uppercase', letterSpacing: '0.08em',
             }}>
               The Human-AI Bridge (Synthesized Case Report)
             </span>
@@ -447,6 +416,13 @@ export default function AgentAnalysisPanel({ symbol, riskScore = 0, isDanger = f
           <p style={{ fontSize: '0.86rem', color: '#1e293b', fontWeight: 600, lineHeight: 1.6 }}>
             {caseReport}
           </p>
+
+          {/* Score breakdown if available */}
+          {breakdown.formula && (
+            <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.5rem', fontFamily: 'var(--font-mono)' }}>
+              Score formula: {breakdown.formula} → Agent1: {breakdown.agent1_contribution} | News: {breakdown.news_contribution} | Contagion: {breakdown.contagion_contribution}
+            </p>
+          )}
         </div>
       </div>
 

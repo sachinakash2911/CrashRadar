@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchWatchlistScores } from '../services/api';
 
-const SECTORS = [
-  { name: 'Banking & Finance', stocks: ['HDFCBANK', 'ICICIBANK', 'KOTAKBANK', 'SBIN', 'AXISBANK'], scores: [58, 44, 37, 61, 49] },
-  { name: 'Information Tech',  stocks: ['TCS', 'INFY', 'WIPRO', 'HCLTECH', 'LTIM'],             scores: [28, 33, 40, 25, 36] },
-  { name: 'Energy & Oil',      stocks: ['RELIANCE', 'ONGC', 'BPCL', 'IOC', 'GAIL'],             scores: [72, 55, 48, 52, 43] },
-  { name: 'Infrastructure',    stocks: ['ADANIENT', 'LT', 'NTPC', 'POWERGRID', 'BHEL'],          scores: [84, 38, 46, 42, 61] },
-  { name: 'FMCG & Consumer',   stocks: ['HINDUNILVR', 'ITC', 'NESTLEIND', 'DABUR', 'MARICO'],    scores: [22, 30, 18, 27, 24] },
-  { name: 'Pharma & Health',   stocks: ['SUNPHARMA', 'DRREDDY', 'CIPLA', 'DIVISLAB', 'ALKEM'],   scores: [35, 41, 29, 44, 33] },
-];
-
-function getRiskColor(score) {
-  if (score >= 70) return { bg: '#fee2e2', text: '#be123c', intensity: Math.min((score - 70) / 30, 1) };
-  if (score >= 40) return { bg: '#fef3c7', text: '#92400e', intensity: Math.min((score - 40) / 30, 1) };
-  return { bg: '#dcfce7', text: '#14532d', intensity: Math.min(score / 40, 1) };
-}
+// Sector groupings matching agent3_graph.py SECTORS
+const SECTOR_MAP = {
+  'Banking & Finance': ['HDFCBANK', 'ICICIBANK', 'KOTAKBANK', 'SBIN', 'AXISBANK'],
+  'Information Tech':  ['TCS', 'INFY', 'WIPRO', 'HCLTECH'],
+  'Energy & Oil':      ['RELIANCE', 'ONGC'],
+  'Infrastructure':    ['ADANIENT', 'LT', 'NTPC', 'POWERGRID'],
+  'FMCG & Consumer':   ['HINDUNILVR', 'ITC', 'ASIANPAINT'],
+  'Pharma & Health':   ['SUNPHARMA'],
+  'NBFC & Financials': ['BAJFINANCE'],
+  'Automobile':        ['MARUTI'],
+  'Telecom':           ['BHARTIARTL'],
+  'Consumer Goods':    ['TITAN'],
+};
 
 function getBgStyle(score) {
+  if (score == null) return { background: 'rgba(148,163,184,0.12)', color: '#94a3b8' };
   if (score >= 70) {
     const a = 0.12 + ((score - 70) / 30) * 0.45;
     return { background: `rgba(225, 29, 72, ${a})`, color: score > 80 ? 'white' : '#be123c' };
@@ -29,7 +30,30 @@ function getBgStyle(score) {
 }
 
 export default function SectorHeatmap() {
-  const [hovered, setHovered] = React.useState(null);
+  const [hovered, setHovered] = useState(null);
+  const [scoreMap, setScoreMap] = useState({});   // { symbol -> final_risk_score }
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchWatchlistScores()
+      .then(data => {
+        if (!mounted) return;
+        const map = {};
+        (data.stocks || []).forEach(s => {
+          map[s.stock] = s.final_risk_score;
+        });
+        setScoreMap(map);
+        setLoading(false);
+      })
+      .catch(err => {
+        if (!mounted) return;
+        setError(err.message);
+        setLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div style={{
@@ -46,7 +70,7 @@ export default function SectorHeatmap() {
             NSE Sector Crash Risk Heatmap
           </p>
           <p style={{ fontSize: '0.75rem', color: '#6b7a99', marginTop: '0.15rem' }}>
-            AI crash probability scores across 6 major sectors
+            {loading ? 'Loading live AI scores…' : error ? 'Showing cached data' : 'Live AI crash probability scores across major sectors'}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -65,72 +89,71 @@ export default function SectorHeatmap() {
 
       {/* Heatmap grid */}
       <div style={{ padding: '1.5rem' }}>
-        {SECTORS.map((sector, si) => (
-          <div key={si} style={{ marginBottom: si < SECTORS.length - 1 ? '1rem' : 0 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem',
-            }}>
-              <span style={{
-                fontSize: '0.75rem', fontWeight: 700, color: '#3d4966',
-                minWidth: 150, flexShrink: 0,
-              }}>
-                {sector.name}
-              </span>
-              <div style={{
-                flex: 1, height: 2, borderRadius: 2, background: '#f1f5f9',
-              }} />
-              <span style={{
-                fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8',
-                fontFamily: 'var(--font-mono)',
-              }}>
-                avg: {Math.round(sector.scores.reduce((a, b) => a + b, 0) / sector.scores.length)}
-              </span>
-            </div>
+        {Object.entries(SECTOR_MAP).map(([sectorName, stocks], si) => {
+          const scores = stocks.map(sym => scoreMap[sym] ?? null);
+          const validScores = scores.filter(s => s !== null);
+          const avg = validScores.length > 0
+            ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+            : null;
 
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {sector.stocks.map((sym, idx) => {
-                const score = sector.scores[idx];
-                const style = getBgStyle(score);
-                const isH = hovered === `${si}-${idx}`;
-                return (
-                  <div
-                    key={sym}
-                    onMouseEnter={() => setHovered(`${si}-${idx}`)}
-                    onMouseLeave={() => setHovered(null)}
-                    style={{
-                      flex: 1, minWidth: 80, maxWidth: 120,
-                      padding: '0.6rem 0.5rem', borderRadius: 10, textAlign: 'center',
-                      cursor: 'default', transition: 'all 0.15s',
-                      border: isH ? `2px solid ${score >= 70 ? '#e11d48' : score >= 40 ? '#d97706' : '#16a34a'}` : '2px solid transparent',
-                      transform: isH ? 'scale(1.05)' : 'scale(1)',
-                      ...style,
-                    }}
-                  >
-                    <div style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 800,
-                      color: style.color, marginBottom: '0.2rem', letterSpacing: '-0.02em',
-                    }}>
-                      {sym}
+          return (
+            <div key={si} style={{ marginBottom: si < Object.keys(SECTOR_MAP).length - 1 ? '1rem' : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3d4966', minWidth: 150, flexShrink: 0 }}>
+                  {sectorName}
+                </span>
+                <div style={{ flex: 1, height: 2, borderRadius: 2, background: '#f1f5f9' }} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                  {loading ? '…' : (avg !== null ? `avg: ${avg}` : 'no data')}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {stocks.map((sym, idx) => {
+                  const score = scoreMap[sym] ?? null;
+                  const style = getBgStyle(loading ? null : score);
+                  const isH = hovered === `${si}-${idx}`;
+                  return (
+                    <div
+                      key={sym}
+                      onMouseEnter={() => setHovered(`${si}-${idx}`)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{
+                        flex: 1, minWidth: 80, maxWidth: 120,
+                        padding: '0.6rem 0.5rem', borderRadius: 10, textAlign: 'center',
+                        cursor: 'default', transition: 'all 0.15s',
+                        border: isH
+                          ? `2px solid ${score != null ? (score >= 70 ? '#e11d48' : score >= 40 ? '#d97706' : '#16a34a') : '#94a3b8'}`
+                          : '2px solid transparent',
+                        transform: isH ? 'scale(1.05)' : 'scale(1)',
+                        ...style,
+                      }}
+                    >
+                      <div style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 800,
+                        color: style.color, marginBottom: '0.2rem', letterSpacing: '-0.02em',
+                      }}>
+                        {sym}
+                      </div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 900, color: style.color, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
+                        {loading ? '…' : (score !== null ? score : '—')}
+                      </div>
                     </div>
-                    <div style={{
-                      fontSize: '1.1rem', fontWeight: 900,
-                      color: style.color, fontFamily: 'var(--font-mono)', lineHeight: 1,
-                    }}>
-                      {score}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{
         padding: '0.75rem 1.5rem', borderTop: '1px solid var(--border)',
         background: '#fafbfd', fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500,
       }}>
-        Numbers represent AI Crash Risk Score (0–100). Green = Safe · Amber = Caution · Red = Danger zone.
+        {error
+          ? `⚠ Could not load live scores: ${error}`
+          : 'Numbers represent live AI Crash Risk Score (0–100) from backend. Green = Safe · Amber = Caution · Red = Danger.'}
       </div>
     </div>
   );
