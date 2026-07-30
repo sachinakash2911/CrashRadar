@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertTriangle, CheckCircle, Clock, Users, BarChart2, AlertOctagon, ChevronRight } from 'lucide-react';
-import { WATCHLIST_STOCKS } from '../services/api';
+import { ArrowRight, AlertTriangle, CheckCircle, Clock, Users, BarChart2, AlertOctagon, ChevronRight, RefreshCw } from 'lucide-react';
+import { WATCHLIST_STOCKS, predictStockCrash } from '../services/api';
 import { useTranslation } from '../i18n/LanguageContext';
 
 const STATUS_COLORS = {
@@ -63,10 +63,37 @@ function DangerPill({ stock, onClick }) {
   );
 }
 
-/* ── Main HomePage ───────────────────────────────────── */
+/* ── Main HomePage ───────────────────────────────────────────── */
 export default function HomePage({ setPage }) {
   const { t } = useTranslation();
-  const dangerStocks = WATCHLIST_STOCKS.filter(s => s.status === 'danger');
+
+  // Hero stocks: RELIANCE, TCS, INFY, HDFCBANK — fetch live risk on mount
+  const HERO_SYMBOLS = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK'];
+  const [heroData, setHeroData] = useState({});
+  const [heroLoading, setHeroLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchHero = async () => {
+      const results = await Promise.allSettled(
+        HERO_SYMBOLS.map(sym => predictStockCrash(sym))
+      );
+      if (!mounted) return;
+      const map = {};
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') map[HERO_SYMBOLS[i]] = r.value;
+      });
+      setHeroData(map);
+      setHeroLoading(false);
+    };
+    fetchHero();
+    return () => { mounted = false; };
+  }, []);
+
+  // Derive danger stocks from live fetched data
+  const dangerStocks = HERO_SYMBOLS
+    .filter(sym => heroData[sym]?.is_danger)
+    .map(sym => ({ symbol: sym, ...heroData[sym] }));
 
   const handleStockClick = (symbol) => setPage('stock-' + symbol);
 
@@ -179,14 +206,22 @@ export default function HomePage({ setPage }) {
               </div>
             </div>
 
-            {/* Right: Stock cards */}
+            {/* Right: Stock cards — live backend data */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-              {WATCHLIST_STOCKS.slice(0, 4).map((s, i) => {
-                const c = STATUS_COLORS[s.status];
+              {HERO_SYMBOLS.map((sym, i) => {
+                const live = heroData[sym];
+                const meta = WATCHLIST_STOCKS.find(s => s.symbol === sym) || { symbol: sym, sector: 'Equity' };
+                const level = live?.risk_level?.toUpperCase() ?? 'UNKNOWN';
+                const status =
+                  level === 'HIGH' || level === 'ELEVATED' ? 'danger' :
+                  level === 'MODERATE' ? 'caution' : 'safe';
+                const c = STATUS_COLORS[status] || STATUS_COLORS.safe;
+                const score = live?.final_risk_score ?? null;
+
                 return (
                   <div
-                    key={i}
-                    onClick={() => handleStockClick(s.symbol)}
+                    key={sym}
+                    onClick={() => handleStockClick(sym)}
                     style={{
                       background: 'rgba(255,255,255,0.06)',
                       border: '1px solid rgba(255,255,255,0.12)',
@@ -205,19 +240,24 @@ export default function HomePage({ setPage }) {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                       <span style={{ fontWeight: 800, color: 'white', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
-                        {s.symbol}
+                        {sym}
                       </span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '0.13rem 0.45rem', borderRadius: 4, background: c.bg, color: c.text }}>
-                        {c.label}
-                      </span>
+                      {heroLoading ? (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '0.13rem 0.45rem', borderRadius: 4, background: 'rgba(255,255,255,0.1)', color: '#94a3b8' }}>…</span>
+                      ) : (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '0.13rem 0.45rem', borderRadius: 4, background: c.bg, color: c.text }}>
+                          {c.label}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem' }}>{s.sector}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.4rem' }}>{meta.sector}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#e2e8f0', fontSize: '0.9rem' }}>{s.price}</span>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: s.change.startsWith('+') ? '#34d399' : '#f87171' }}>{s.change}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#e2e8f0', fontSize: '0.9rem' }}>
+                        {heroLoading ? '—' : (score !== null ? `Risk: ${score}` : '—')}
+                      </span>
                     </div>
                     <div style={{ marginTop: '0.55rem', background: 'rgba(255,255,255,0.1)', borderRadius: 4, height: 3, overflow: 'hidden' }}>
-                      <div style={{ width: `${s.risk}%`, height: '100%', background: c.bar, borderRadius: 4 }} />
+                      <div style={{ width: `${heroLoading ? 0 : (score ?? 0)}%`, height: '100%', background: c.bar, borderRadius: 4, transition: 'width 1s ease' }} />
                     </div>
                   </div>
                 );

@@ -218,7 +218,7 @@ export default function ScannerPage({ setPage }) {
             {/* Gauge + Reasons */}
             <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '2rem', alignItems: 'start' }}>
               <div>
-                <RiskGauge score={result.risk_score} isDanger={result.is_danger} />
+                <RiskGauge score={result.final_risk_score} isDanger={result.is_danger} />
                 <div style={{
                   marginTop: '1rem', padding: '1rem', background: '#f8fafc',
                   border: '1px solid var(--border)', borderRadius: 12,
@@ -229,29 +229,30 @@ export default function ScannerPage({ setPage }) {
                     : '✅ Market structure is within normal parameters. Monitor for changes.'}
                 </div>
               </div>
-              <ReasonCards reasons={result.reasons} />
+              <ReasonCards reasons={result.agent1?.shap_reasons ?? result.reasons ?? []} />
             </div>
 
             {/* 3 AI Agents Telemetry Panel */}
             <AgentAnalysisPanel
               symbol={result.symbol}
-              riskScore={result.risk_score}
+              predictData={result}
+              riskScore={result.final_risk_score}
               isDanger={result.is_danger}
-              reasons={result.reasons}
+              reasons={result.agent1?.shap_reasons ?? []}
             />
 
             {/* WhatsApp Voice Alert Preview */}
             <WhatsAppPreview
               symbol={result.symbol}
-              riskScore={result.risk_score}
-              reasons={result.reasons}
+              riskScore={result.final_risk_score}
+              reasons={result.agent1?.shap_reasons ?? []}
               isDanger={result.is_danger}
             />
 
             {/* What-If Simulator Panel */}
             <WhatIfSimulator
               symbol={result.symbol}
-              baseScore={result.risk_score}
+              baseScore={result.final_risk_score}
               isDanger={result.is_danger}
             />
           </div>
