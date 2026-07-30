@@ -179,7 +179,7 @@ def predict(stock: str):
         "agent3": {
             "contagion_risk": agent3["contagion_risk"],
             "affected_companies": agent3["affected_companies"],
-            "explanation": agent3["explanation"],
+           "explanation": agent3["conclusion"],
             "sector": agent3["sector"],
         },
         "final_verdict": verdict,
@@ -279,7 +279,7 @@ def alert(stock: str, body: AlertNote = AlertNote()):
         f"Live: {result['live_signal'].get('alert_level', 'LOW')}\n"
         f"Agent2 (News): {result['agent2']['conclusion']}"
         f"{family_note_text}\n"
-        f"Agent3 (Contagion): {result['agent3']['explanation']}"
+        f"Agent3 (Contagion): {result['agent3']['conclusion']}"
         f"{note_text}"
     )
 
